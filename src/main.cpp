@@ -7,6 +7,7 @@
 
 Scd41 sensor(SENSOR_TEMPERATURE_OFFSET, SENSOR_ALTITUDE);
 BuiltInLed builtInLed(PIN_BUILT_IN_LED);
+uint8_t state = 0;
 
 void printSerialNumber(uint64_t value)
 {
@@ -26,7 +27,7 @@ void setup()
 
   Serial.println(F("[SETUP] Initialization..."));
 
-  builtInLed.begin();
+  builtInLed.begin(7);
 
   uint16_t error = sensor.begin(PIN_SDA, PIN_SCL);
   char errorMessage[256];
@@ -63,6 +64,13 @@ void printSensorMeasurement() {
   }
   else
   {
+    if (measurement.co2 < CO2_ALERT_THRESHOLD) {
+      state = 1;
+    } else {
+      state = 2;
+    }
+
+
     Serial.print("Sensor 0x");
     Serial.print(sensor.getSerialNumber(), HEX);
     Serial.print(" data: ");
@@ -77,8 +85,25 @@ void printSensorMeasurement() {
   }
 }
 
+void processState() {
+    switch (state)
+  {
+  case 1:
+    builtInLed.pulse(2000, 1);
+    break;
+
+  case 2:
+    builtInLed.pulse(2000, 0);
+    break;
+  
+  default:
+    builtInLed.switchOff();
+    break;
+  }
+}
+
 void loop()
 {
-  builtInLed.pulse(2000);
+  processState();
   printSensorMeasurement();
 }

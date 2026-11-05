@@ -6,8 +6,9 @@ class BuiltInLed
 {
 public:
     explicit BuiltInLed(int16_t pin);
-    void begin();
-    void pulse(uint16_t period);
+    void begin(uint8_t brightness);
+    void pulse(uint16_t period, uint8_t mode);
+    void switchOff();
 
 private:
     int16_t pin;
