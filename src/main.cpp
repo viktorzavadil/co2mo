@@ -7,7 +7,11 @@
 
 Scd41 sensor(SENSOR_TEMPERATURE_OFFSET, SENSOR_ALTITUDE);
 BuiltInLed builtInLed(PIN_BUILT_IN_LED);
-uint8_t state = 0;
+
+constexpr Indicator ROTATION[] = {Indicator::CO2, Indicator::Temperature, Indicator::Humidity};
+constexpr uint8_t ROTATION_SIZE = sizeof(ROTATION) / sizeof(ROTATION[0]);
+constexpr uint16_t PULSE_PERIOD = 800;
+uint8_t rotationIdx = 0;
 
 void printSerialNumber(uint64_t value)
 {
@@ -27,7 +31,7 @@ void setup()
 
   Serial.println(F("[SETUP] Initialization..."));
 
-  builtInLed.begin(7);
+  builtInLed.begin();
 
   uint16_t error = sensor.begin(PIN_SDA, PIN_SCL);
   char errorMessage[256];
@@ -40,16 +44,47 @@ void setup()
   }
 }
 
-void printSensorMeasurement() {
-    bool ready;
+uint8_t pulsesFor(Indicator indicator, const Measurement &m)
+{
+  switch (indicator)
+  {
+  case Indicator::CO2:
+    return round(m.co2 / 100.0f);
+  case Indicator::Temperature:
+    return round(max(0.0f, m.temperature) / 10.0f);
+  case Indicator::Humidity:
+    return round(max(0.0f, m.humidity) / 10.0f);
+  default:
+    return 0;
+  }
+}
+
+void showNextMetric(const Measurement &m)
+{
+  if (builtInLed.isPulsate())
+  {
+    return; // busy, rotation does not advance
+  }
+
+  Indicator indicator = ROTATION[rotationIdx];
+  rotationIdx = (rotationIdx + 1) % ROTATION_SIZE;
+  builtInLed.startPulses(pulsesFor(indicator, m), PULSE_PERIOD, indicator);
+}
+
+void processSensorMeasurement()
+{
+  bool ready;
   uint16_t error = sensor.getDataReadyStatus(ready);
-  if (error) {
+  if (error)
+  {
     char errorMessage[256];
     Serial.print("Reading SCD41 sensor ready status failed: ");
     sensor.errorText(error, errorMessage, 256);
     Serial.println(errorMessage);
+    return;
   }
-  if (!ready) {
+  if (!ready)
+  {
     return;
   }
 
@@ -61,16 +96,12 @@ void printSensorMeasurement() {
     Serial.print("Reading SCD41 sensor measurement failed: ");
     sensor.errorText(error, errorMessage, 256);
     Serial.println(errorMessage);
+    builtInLed.resetPulses();
+    builtInLed.startPulses(5, PULSE_PERIOD, Indicator::Error);
+    rotationIdx = 0;
   }
   else
   {
-    if (measurement.co2 < CO2_ALERT_THRESHOLD) {
-      state = 1;
-    } else {
-      state = 2;
-    }
-
-
     Serial.print("Sensor 0x");
     Serial.print(sensor.getSerialNumber(), HEX);
     Serial.print(" data: ");
@@ -82,28 +113,13 @@ void printSensorMeasurement() {
     Serial.print(", ");
     Serial.print("hum=");
     Serial.println(measurement.humidity);
-  }
-}
 
-void processState() {
-    switch (state)
-  {
-  case 1:
-    builtInLed.pulse(2000, 1);
-    break;
-
-  case 2:
-    builtInLed.pulse(2000, 0);
-    break;
-  
-  default:
-    builtInLed.switchOff();
-    break;
+    showNextMetric(measurement);
   }
 }
 
 void loop()
 {
-  processState();
-  printSensorMeasurement();
+  builtInLed.updatePulses();
+  processSensorMeasurement();
 }
